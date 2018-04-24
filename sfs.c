@@ -29,6 +29,7 @@
 
 #include "log.h"
 
+#define DISKFILE (((struct sfs_state *) fuse_get_context()->private_data)->diskfile)
 
 ///////////////////////////////////////////////////////////
 //
