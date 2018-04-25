@@ -30,6 +30,8 @@
 #include "log.h"
 
 #define DISKFILE (((struct sfs_state *) fuse_get_context()->private_data)->diskfile)
+#define MAX_DISK_SIZE (16 * 1000 * 1000)
+#define NUM_BLOCKS (MAX_DISK_SIZE / BLOCK_SIZE)
 
 ///////////////////////////////////////////////////////////
 //
