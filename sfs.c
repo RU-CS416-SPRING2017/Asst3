@@ -51,6 +51,13 @@
  */
 void *sfs_init(struct fuse_conn_info *conn)
 {
+    disk_open(DISKFILE);
+    char buf[BLOCK_SIZE] = { 0 };
+    int i;
+    for (i = 0; i < NUM_BLOCKS; i++) {
+        int ret = block_write(i, buf);
+    }
+    
     fprintf(stderr, "in bb-init\n");
     log_msg("\nsfs_init()\n");
     
@@ -70,6 +77,7 @@ void *sfs_init(struct fuse_conn_info *conn)
 void sfs_destroy(void *userdata)
 {
     log_msg("\nsfs_destroy(userdata=0x%08x)\n", userdata);
+    disk_close();
 }
 
 /** Get file attributes.
