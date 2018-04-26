@@ -34,8 +34,8 @@
 #define NUM_BLOCKS (MAX_DISK_SIZE / BLOCK_SIZE)
 #define NUM_INODES 128
 #define INODES_SIZE (sizeof(struct stat) * NUM_INODES)
-#define INDOES_BLOCKS 1;
-#define FS_BLOCK 0;
+#define INDOES_BLOCKS 1
+#define FS_BLOCK 0
 
 struct filesystem {
     int numIndoesBlocks;
@@ -50,6 +50,32 @@ struct filesystem {
 // Prototypes for all these functions, and the C-style comments,
 // come indirectly from /usr/include/fuse.h
 //
+
+// Save all Inodes into buf,
+// return 0 if successful, -1 otherwise
+int getInodes(struct stat * buf) {
+    int i;
+    for (i = INDOES_BLOCKS; i < NUM_INODES; i++) {
+        if (block_read(i, buf) != BLOCK_SIZE) {
+            return -1;
+        }
+        buf += BLOCK_SIZE;
+    }
+    return 0;
+}
+
+// Write all Inodes from buf,
+// return 0 if successful, -1 otherwise
+int setInodes(struct stat * buf) {
+    int i;
+    for (i = INDOES_BLOCKS; i < NUM_INODES; i++) {
+        if (block_write(i, buf) != BLOCK_SIZE) {
+            return -1;
+        }
+        buf += BLOCK_SIZE;
+    }
+    return 0;
+}
 
 /**
  * Initialize filesystem
@@ -96,6 +122,8 @@ void *sfs_init(struct fuse_conn_info *conn)
     
     // Write calculated numbers to fisrt block
     block_write(FS_BLOCK, buf);
+
+    log_msg("Max Disk Size: %d\nNumber of Blocks: %d\nNumber of Inodes: %d\nSize of all Inodes: %d\nNumber of Inode Blocks: %d\nNumber of Bitmap Blocks: %d\nNumber of Data Blocks: %d", MAX_DISK_SIZE, NUM_BLOCKS, NUM_INODES, INODES_SIZE, fs->numIndoesBlocks, fs->numBitmapBlocks, fs->numDataBlocks);
 
     return SFS_DATA;
 }
