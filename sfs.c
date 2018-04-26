@@ -37,6 +37,8 @@
 #define INDOES_BLOCKS 1
 #define FS_BLOCK 0
 
+#define FS_CAST(ptr) ((struct filesystem *) (ptr))
+
 struct filesystem {
     int numIndoesBlocks;
     int bitmapBlocks;
@@ -55,8 +57,8 @@ struct filesystem {
 // return 0 if successful, -1 otherwise
 int getInodes(struct stat * buf) {
     int i;
-    for (i = INDOES_BLOCKS; i < NUM_INODES; i++) {
-        if (block_read(i, buf) != BLOCK_SIZE) {
+    for (i = 0; i < NUM_INODES; i++) {
+        if (block_read(i + INDOES_BLOCKS, buf) != BLOCK_SIZE) {
             return -1;
         }
         buf += BLOCK_SIZE;
@@ -68,13 +70,46 @@ int getInodes(struct stat * buf) {
 // return 0 if successful, -1 otherwise
 int setInodes(struct stat * buf) {
     int i;
-    for (i = INDOES_BLOCKS; i < NUM_INODES; i++) {
-        if (block_write(i, buf) != BLOCK_SIZE) {
+    for (i = 0; i < NUM_INODES; i++) {
+        if (block_write(i + INDOES_BLOCKS, buf) != BLOCK_SIZE) {
             return -1;
         }
         buf += BLOCK_SIZE;
     }
     return 0;
+}
+
+// Allocates a block and returns the block number
+// of the allocated block. Returns 0 if no free block found.
+// Returns -1 on error.
+int allocateBlock() {
+
+    char buf[BLOCK_SIZE];
+    block_read(FS_BLOCK, buf);
+    struct filesystem * fs = FS_CAST(buf);
+    char bitmap[BLOCK_SIZE * fs->numBitmapBlocks];
+
+    int i;
+    for (i = 0; i < fs->numBitmapBlocks; i++) {
+        block_read(i + fs->bitmapBlocks, bitmap + (i * BLOCK_SIZE));
+    }
+
+    for (i = 0; i < (BLOCK_SIZE * fs->numBitmapBlocks); i++) {
+        int j;
+        for (j = 0; j < 8; j++) {
+            int index = (i * 8) + j;
+            if (index >= fs->numDataBlocks) {
+                return 0;
+            }
+            char bit = (bitmap[i] >> (7 - j)) & 1;
+            if (!bit) {
+                bitmap[i] = bitmap[i] | (1 << (7 - j));
+                block_write(i / BLOCK_SIZE, bitmap + i);
+                return index + fs->numDataBlocks;
+            }
+        }
+        return 0;
+    }
 }
 
 /**
@@ -103,7 +138,7 @@ void *sfs_init(struct fuse_conn_info *conn)
     }
 
     // Calculate numbers for filesystem
-    struct filesystem * fs = buf;
+    struct filesystem * fs = FS_CAST(buf);
     if (INODES_SIZE % BLOCK_SIZE) {
         fs->numIndoesBlocks = (INODES_SIZE / BLOCK_SIZE) + 1;
     } else {
