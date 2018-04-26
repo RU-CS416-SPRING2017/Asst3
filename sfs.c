@@ -32,6 +32,18 @@
 #define DISKFILE (((struct sfs_state *) fuse_get_context()->private_data)->diskfile)
 #define MAX_DISK_SIZE (16 * 1000 * 1000)
 #define NUM_BLOCKS (MAX_DISK_SIZE / BLOCK_SIZE)
+#define NUM_INODES 128
+#define INODES_SIZE (sizeof(struct stat) * NUM_INODES)
+#define INDOES_BLOCKS 1;
+#define FS_BLOCK 0;
+
+struct filesystem {
+    int numIndoesBlocks;
+    int bitmapBlocks;
+    int numBitmapBlocks;
+    int dataBlocks;
+    int numDataBlocks;
+};
 
 ///////////////////////////////////////////////////////////
 //
@@ -51,18 +63,39 @@
  */
 void *sfs_init(struct fuse_conn_info *conn)
 {
+    fprintf(stderr, "in bb-init\n");
+    log_msg("\nsfs_init()\n");
+    log_conn(conn);
+    log_fuse_context(fuse_get_context());
+
+    // Zero out all blocks except for 1st
     disk_open(DISKFILE);
     char buf[BLOCK_SIZE] = { 0 };
     int i;
-    for (i = 0; i < NUM_BLOCKS; i++) {
+    for (i = 1; i < NUM_BLOCKS; i++) {
         int ret = block_write(i, buf);
     }
+
+    // Calculate numbers for filesystem
+    struct filesystem * fs = buf;
+    if (INODES_SIZE % BLOCK_SIZE) {
+        fs->numIndoesBlocks = (INODES_SIZE / BLOCK_SIZE) + 1;
+    } else {
+        fs->numIndoesBlocks = INODES_SIZE / BLOCK_SIZE;
+    }
+    int blocksLeft = NUM_BLOCKS - (fs->numIndoesBlocks + 1);
+    fs->bitmapBlocks = INDOES_BLOCKS + fs->numIndoesBlocks;
+    int bitsInBlock = BLOCK_SIZE * 8;
+    fs->numBitmapBlocks = 1;
+    fs->numDataBlocks = blocksLeft - 1;
+    while ((fs->numBitmapBlocks * bitsInBlock) < fs->numDataBlocks) {
+        (fs->numBitmapBlocks)++;
+        (fs->numDataBlocks)--;
+    }
+    fs->dataBlocks = fs->bitmapBlocks + fs->numBitmapBlocks;
     
-    fprintf(stderr, "in bb-init\n");
-    log_msg("\nsfs_init()\n");
-    
-    log_conn(conn);
-    log_fuse_context(fuse_get_context());
+    // Write calculated numbers to fisrt block
+    block_write(FS_BLOCK, buf);
 
     return SFS_DATA;
 }
