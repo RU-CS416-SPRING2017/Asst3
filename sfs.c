@@ -84,16 +84,23 @@ int setInodes(struct stat * buf) {
 // Returns -1 on error.
 int allocateBlock() {
 
+    // Getting filesystem metadata
     char buf[BLOCK_SIZE];
-    block_read(FS_BLOCK, buf);
+    if (block_read(FS_BLOCK, buf) != BLOCK_SIZE) {
+        return -1;
+    }
     struct filesystem * fs = FS_CAST(buf);
-    char bitmap[BLOCK_SIZE * fs->numBitmapBlocks];
 
+    // Getting the bitmap
+    char bitmap[BLOCK_SIZE * fs->numBitmapBlocks];
     int i;
     for (i = 0; i < fs->numBitmapBlocks; i++) {
-        block_read(i + fs->bitmapBlocks, bitmap + (i * BLOCK_SIZE));
+        if (block_read(i + fs->bitmapBlocks, bitmap + (i * BLOCK_SIZE)) != BLOCK_SIZE) {
+            return -1;
+        }
     }
 
+    // Finding the next available block and updating the bitmap
     for (i = 0; i < (BLOCK_SIZE * fs->numBitmapBlocks); i++) {
         int j;
         for (j = 0; j < 8; j++) {
@@ -104,12 +111,13 @@ int allocateBlock() {
             char bit = (bitmap[i] >> (7 - j)) & 1;
             if (!bit) {
                 bitmap[i] = bitmap[i] | (1 << (7 - j));
-                block_write(i / BLOCK_SIZE, bitmap + i);
-                return index + fs->numDataBlocks;
+                int offset = i / BLOCK_SIZE;
+                block_write(offset + fs->bitmapBlocks, bitmap + offset);
+                return index + fs->dataBlocks;
             }
         }
-        return 0;
     }
+    return 0;
 }
 
 /**
@@ -158,7 +166,12 @@ void *sfs_init(struct fuse_conn_info *conn)
     // Write calculated numbers to fisrt block
     block_write(FS_BLOCK, buf);
 
-    log_msg("Max Disk Size: %d\nNumber of Blocks: %d\nNumber of Inodes: %d\nSize of all Inodes: %d\nNumber of Inode Blocks: %d\nNumber of Bitmap Blocks: %d\nNumber of Data Blocks: %d", MAX_DISK_SIZE, NUM_BLOCKS, NUM_INODES, INODES_SIZE, fs->numIndoesBlocks, fs->numBitmapBlocks, fs->numDataBlocks);
+    log_msg("Max Disk Size: %d\nNumber of Blocks: %d\nNumber of Inodes: %d\nSize of all Inodes: %d\nNumber of Inode Blocks: %d\nNumber of Bitmap Blocks: %d\nNumber of Data Blocks: %d\nBitmap Blocks: %d\nData Blocks: %d\n", MAX_DISK_SIZE, NUM_BLOCKS, NUM_INODES, INODES_SIZE, fs->numIndoesBlocks, fs->numBitmapBlocks, fs->numDataBlocks, fs->bitmapBlocks, fs->dataBlocks);
+
+    for (i = 0; i < 30; i++) {
+        int test = allocateBlock();
+        log_msg("test %d: %d\n", i, test);
+    }
 
     return SFS_DATA;
 }
