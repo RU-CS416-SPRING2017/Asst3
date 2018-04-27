@@ -82,11 +82,13 @@ int setInodes(struct stat * buf) {
 // Stores the filesystem metadata in buf
 // returns 0 on success, else -1
 int getFilesystem(struct filesystem * buf) {
-    char buffer[BLOCK_SIZE];
+    char * buffer = malloc(BLOCK_SIZE);
     if (block_read(FS_BLOCK, buffer) != BLOCK_SIZE) {
+        free(buffer);
         return -1;
     }
     memcpy(buf, buffer, sizeof(struct filesystem));
+    free(buffer);
     return 0;
 }
 
@@ -136,6 +138,49 @@ int allocateBlock(struct filesystem * fs) {
         }
     }
     free(bitmap);
+    return 0;
+}
+
+// Free the allocated block. Return 0 on success, -1
+// on error.
+int freeBlock(struct filesystem * fs, int dataBlock) {
+
+    // Zeroing out the data
+    char * zero = calloc(1, BLOCK_SIZE);
+    if (block_write(dataBlock, zero) != BLOCK_SIZE) {
+        free(zero);
+        return -1;
+    }
+    free(zero);
+
+    // Calculating numbers
+    int bitIndex = dataBlock - fs->dataBlocks;
+    int bitsInBlock = 8 * BLOCK_SIZE;
+    int bitmapBlockIndex = bitIndex / bitsInBlock;
+    int bitInBlockIndex = bitIndex % bitsInBlock;
+    int bitmapBlock = bitmapBlockIndex + fs->bitmapBlocks;
+    int charBufIndex = bitInBlockIndex / 8;
+    int bitInCharBufIndex = bitInBlockIndex % 8;
+
+    // Getting the appropriate bitmap block
+    char * bitmapBlockBuf = malloc(BLOCK_SIZE);
+    if (block_read(bitmapBlockIndex, bitmapBlockBuf) != BLOCK_SIZE) {
+        free(bitmapBlockBuf);
+        return -1;
+    }
+
+    // Updating bit in buffer
+    char mask = 1 << (7 - bitInCharBufIndex);
+    mask = mask ^ 0xFF;
+    bitmapBlockBuf[charBufIndex] = bitmapBlockBuf[charBufIndex] & mask;
+
+    // Writing buffer to disk
+    if (block_write(bitmapBlockIndex, bitmapBlockBuf) != BLOCK_SIZE) {
+        free(bitmapBlockBuf);
+        return -1;
+    }
+
+    free(bitmapBlockBuf);
     return 0;
 }
 
@@ -219,8 +264,11 @@ void *sfs_init(struct fuse_conn_info *conn)
 
     for (i = 0; i < 5000; i++) {
         int test = allocateBlock(fs);
-        log_msg("test %d: %d\n", i, test);
+        // log_msg("test %d: %d\n", i, test);
     }
+
+    freeBlock(fs, 800);
+    printBitmap();
 
     return SFS_DATA;
 }
