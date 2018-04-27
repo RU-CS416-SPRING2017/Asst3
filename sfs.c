@@ -106,39 +106,67 @@ int getBitmap(struct filesystem * fs, void * buf) {
 // Allocates a block and returns the block number
 // of the allocated block. Returns 0 if no free block found.
 // Returns -1 on error.
-int allocateBlock() {
-
-    // Getting filesystem metadata
-    struct filesystem fs;
-    if (getFilesystem(&fs)) {
-        return -1;
-    }
+int allocateBlock(struct filesystem * fs) {
 
     // Getting the bitmap
-    char bitmap[BLOCK_SIZE * fs.numBitmapBlocks];
-    if (getBitmap(&fs, bitmap)) {
+    char * bitmap = malloc(BLOCK_SIZE * fs->numBitmapBlocks);
+    if (getBitmap(fs, bitmap)) {
+        free(bitmap);
         return -1;
     }
 
     // Finding the next available block and updating the bitmap
     int i;
-    for (i = 0; i < (BLOCK_SIZE * fs.numBitmapBlocks); i++) {
+    for (i = 0; i < (BLOCK_SIZE * fs->numBitmapBlocks); i++) {
         int j;
         for (j = 0; j < 8; j++) {
             int index = (i * 8) + j;
-            if (index >= fs.numDataBlocks) {
+            if (index >= fs->numDataBlocks) {
+                free(bitmap);
                 return 0;
             }
             char bit = (bitmap[i] >> (7 - j)) & 1;
             if (!bit) {
                 bitmap[i] = bitmap[i] | (1 << (7 - j));
                 int offset = i / BLOCK_SIZE;
-                block_write(offset + fs.bitmapBlocks, bitmap + offset);
-                return index + fs.dataBlocks;
+                block_write(offset + fs->bitmapBlocks, bitmap + (offset * BLOCK_SIZE));
+                free(bitmap);
+                return index + fs->dataBlocks;
             }
         }
     }
+    free(bitmap);
     return 0;
+}
+
+// Test function
+void printBitmap() {
+    // Getting filesystem metadata
+    struct filesystem fs;
+    getFilesystem(&fs);
+
+    // Getting the bitmap
+    char bitmap[BLOCK_SIZE * fs.numBitmapBlocks];
+    getBitmap(&fs, bitmap);
+
+    // Print all bits in bitmap
+    int l;
+    for (l = 0; l < fs.numBitmapBlocks; l++) {
+        int i;
+        int accum = 0;
+        for (i = 0; i < BLOCK_SIZE; i++) {
+            int j;
+            for (j = 0; j < 8; j++) {
+                int index = (i * 8) + j;
+                char bit = (bitmap[(l * BLOCK_SIZE) + i] >> (7 - j)) & 1;
+                if (bit) {
+                    accum++;
+                }
+                log_msg("%d", bit);
+            }
+        }
+        log_msg("\nbits found %d\n", accum);
+    }
 }
 
 /**
@@ -190,7 +218,7 @@ void *sfs_init(struct fuse_conn_info *conn)
     log_msg("Max Disk Size: %d\nNumber of Blocks: %d\nNumber of Inodes: %d\nSize of all Inodes: %d\nNumber of Inode Blocks: %d\nNumber of Bitmap Blocks: %d\nNumber of Data Blocks: %d\nBitmap Blocks: %d\nData Blocks: %d\n", MAX_DISK_SIZE, NUM_BLOCKS, NUM_INODES, INODES_SIZE, fs->numIndoesBlocks, fs->numBitmapBlocks, fs->numDataBlocks, fs->bitmapBlocks, fs->dataBlocks);
 
     for (i = 0; i < 5000; i++) {
-        int test = allocateBlock();
+        int test = allocateBlock(fs);
         log_msg("test %d: %d\n", i, test);
     }
 
