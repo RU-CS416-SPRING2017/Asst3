@@ -14,7 +14,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <fuse.h>
+// #include <fuse.h>
 #include <libgen.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -383,15 +383,38 @@ int getInodeBlock(struct inode * inode, int blockIndex, struct filesystem * fs) 
     }
 }
 
-int readInodeData(struct inode * inode, size_t size, off_t offset, void * buf) {
+// Read size bytes starting at offset from inode's data and store it in buf.
+// Return 0 on success and -1 otherwise.
+int readInodeData(struct inode * inode, size_t size, off_t offset, void * buf, struct filesystem * fs) {
 
-    size_t endRequest = size + offset;
-    if (endRequest > inode->indoe.st_size) {
+    // Calculateing numbers
+    size_t totalSize = size + offset;
+    if (totalSize > inode->indoe.st_size) {
         return -1;
     }
     int blockIndex = offset / BLOCK_SIZE;
     int byteInBlock = offset % BLOCK_SIZE;
     int numBlocks = ((byteInBlock + size) / BLOCK_SIZE) + 1;
+
+    // Get data
+    char * dataBlock = malloc(BLOCK_SIZE * numBlocks);
+    int i;
+    for (i = 0; i < numBlocks; i++) {
+        int block = getInodeBlock(inode, i + blockIndex, fs);
+        if (!(block > 0)) {
+            free(dataBlock);
+            return -1;
+        }
+        if (block_read(block, dataBlock + (i * BLOCK_SIZE)) != BLOCK_SIZE) {
+            free(dataBlock);
+            return -1;
+        }
+    }
+
+    // Return the data
+    memcpy(buf, dataBlock + byteInBlock, size);
+    free(dataBlock);
+    return 0;
 
 }
 
