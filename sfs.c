@@ -389,7 +389,7 @@ int readInodeData(struct inode * inode, size_t size, off_t offset, void * buf, s
 
     // Calculateing numbers
     size_t totalSize = size + offset;
-    if (totalSize > inode->indoe.st_size) {
+    if (totalSize > inode->info.st_size) {
         return -1;
     }
     int blockIndex = offset / BLOCK_SIZE;
