@@ -240,9 +240,9 @@ void *sfs_init(struct fuse_conn_info *conn)
     log_conn(conn);
     log_fuse_context(fuse_get_context());
 
-    // Zero out all blocks except for 1st
+    // Zero out all blocks
     disk_open(DISKFILE);
-    char buf[BLOCK_SIZE] = { 0 };
+    char * buf = calloc(1, BLOCK_SIZE);
     int i;
     for (i = 1; i < NUM_BLOCKS; i++) {
         int ret = block_write(i, buf);
@@ -277,9 +277,10 @@ void *sfs_init(struct fuse_conn_info *conn)
     }
 
     freeBlock(fs, 4141);
-    allocateBlock(fs);
+    // allocateBlock(fs);
     printBitmap();
 
+    free(buf);
     return SFS_DATA;
 }
 
