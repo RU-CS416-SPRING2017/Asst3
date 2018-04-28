@@ -95,14 +95,50 @@ int getInode(int index, struct inode * buf) {
     char * block = malloc(BLOCK_SIZE * numBlocks);
     int i;
     for (i = 0; i < numBlocks; i++) {
-        if (block_read(blockNumber + i, buf + (i * BLOCK_SIZE)) != BLOCK_SIZE) {
-            free(buf);
+        if (block_read(blockNumber + i, block + (i * BLOCK_SIZE)) != BLOCK_SIZE) {
+            free(block);
             return -1;
         }
     }
 
     // Store the inode in buf
     memcpy(buf, block + byteInBlock, INDOE_SIZE);
+    free(block);
+    return 0;
+}
+
+// Updates the inode at index with buf.
+// Returns 0 on success, else returns -1.
+int setInode(int index, struct inode * buf) {
+
+    // Calculating numbers
+    int firstByte = index * INDOE_SIZE;
+    int blockIndex = firstByte / BLOCK_SIZE;
+    int blockNumber = blockIndex + INDOES_BLOCKS;
+    int byteInBlock = firstByte % BLOCK_SIZE;
+    int numBlocks = ((byteInBlock + INDOE_SIZE) / BLOCK_SIZE) + 1;
+
+    // Get appropriate blocks
+    char * block = malloc(BLOCK_SIZE * numBlocks);
+    int i;
+    for (i = 0; i < numBlocks; i++) {
+        if (block_read(blockNumber + i, block + (i * BLOCK_SIZE)) != BLOCK_SIZE) {
+            free(block);
+            return -1;
+        }
+    }
+
+    // Store the buf in block
+    memcpy(block + byteInBlock, buf, INDOE_SIZE);
+
+    // Write back to disk
+    for (i = 0; i < numBlocks; i++) {
+        if (block_write(blockNumber + i, block + (i * BLOCK_SIZE)) != BLOCK_SIZE) {
+            free(block);
+            return -1;
+        }
+    }
+    free(block);
     return 0;
 }
 
