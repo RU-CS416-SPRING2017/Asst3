@@ -30,10 +30,15 @@
 #include "log.h"
 
 #define DISKFILE (((struct sfs_state *) fuse_get_context()->private_data)->diskfile)
+
 #define MAX_DISK_SIZE (16 * 1000 * 1000)
+#define INDOE_SIZE sizeof(struct inode)
+#define INODES_SIZE (INDOE_SIZE * NUM_INODES)
+
 #define NUM_BLOCKS (MAX_DISK_SIZE / BLOCK_SIZE)
 #define NUM_INODES 128
-#define INODES_SIZE (sizeof(struct stat) * NUM_INODES)
+#define INTS_IN_BLOCK (BLOCK_SIZE / sizeof(int))
+
 #define INDOES_BLOCKS 1
 #define FS_BLOCK 0
 
@@ -45,6 +50,19 @@ struct filesystem {
     int numBitmapBlocks;
     int dataBlocks;
     int numDataBlocks;
+};
+
+struct inode {
+    struct stat info;
+    int block[12];
+    int block1;
+    int block2;
+    int block3;
+};
+
+struct dirRow {
+    char name[NAME_MAX];
+    int inode;
 };
 
 ///////////////////////////////////////////////////////////
@@ -64,7 +82,7 @@ void printBits(char byte) {
 
 // Save all Inodes into buf,
 // return 0 if successful, -1 otherwise
-int getInodes(struct stat * buf) {
+int getInodes(struct inode * buf) {
     int i;
     for (i = 0; i < NUM_INODES; i++) {
         if (block_read(i + INDOES_BLOCKS, buf) != BLOCK_SIZE) {
@@ -77,7 +95,7 @@ int getInodes(struct stat * buf) {
 
 // Write all Inodes from buf,
 // return 0 if successful, -1 otherwise
-int setInodes(struct stat * buf) {
+int setInodes(struct inode * buf) {
     int i;
     for (i = 0; i < NUM_INODES; i++) {
         if (block_write(i + INDOES_BLOCKS, buf) != BLOCK_SIZE) {
@@ -270,15 +288,6 @@ void *sfs_init(struct fuse_conn_info *conn)
     block_write(FS_BLOCK, buf);
 
     log_msg("Max Disk Size: %d\nNumber of Blocks: %d\nNumber of Inodes: %d\nSize of all Inodes: %d\nNumber of Inode Blocks: %d\nNumber of Bitmap Blocks: %d\nNumber of Data Blocks: %d\nBitmap Blocks: %d\nData Blocks: %d\n", MAX_DISK_SIZE, NUM_BLOCKS, NUM_INODES, INODES_SIZE, fs->numIndoesBlocks, fs->numBitmapBlocks, fs->numDataBlocks, fs->bitmapBlocks, fs->dataBlocks);
-
-    for (i = 0; i < 5000; i++) {
-        int test = allocateBlock(fs);
-        // log_msg("test %d: %d\n", i, test);
-    }
-
-    freeBlock(fs, 4141);
-    // allocateBlock(fs);
-    printBitmap();
 
     free(buf);
     return SFS_DATA;
