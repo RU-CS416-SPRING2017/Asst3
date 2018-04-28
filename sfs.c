@@ -54,10 +54,9 @@ struct filesystem {
 
 struct inode {
     struct stat info;
-    int block[12];
+    int block[13];
     int block1;
     int block2;
-    int block3;
 };
 
 struct dirRow {
@@ -271,6 +270,129 @@ int freeBlock(struct filesystem * fs, int dataBlock) {
 
     free(bitmapBlockBuf);
     return 0;
+}
+
+// Returns the data block number of inode at blockIndex.
+// Returns 0 if out of index. Returns -1 on error.
+// Allocates the block if not allocated.
+int getInodeBlock(struct inode * inode, int blockIndex, struct filesystem * fs) {
+
+    // Calculating indexes
+    int startIndex = 0;
+    int endIndex = 12;
+    int startIndex1 = endIndex + 1;
+    int endIndex1 = (startIndex1 + INTS_IN_BLOCK) - 1;
+    int startIndex2 = endIndex1 + 1;
+    int endIndex2 = (startIndex2 + (INTS_IN_BLOCK * INTS_IN_BLOCK)) - 1;
+
+    // If blockIndex is in direct block simpy returns that,
+    // allocated if neccesary
+    if (blockIndex >= startIndex && blockIndex <= endIndex) {
+        if (!(inode->block[blockIndex])) {
+            int temp = allocateBlock(fs);
+            if (!(temp > 0)) {
+                return -1;
+            }
+            inode->block[blockIndex] = temp;
+        }
+        return inode->block[blockIndex];
+
+    // If blockIndex is in the singly indirect blocks then handle that
+    } else if (blockIndex >= startIndex1 && blockIndex <= endIndex1) {
+
+        // Get the block with the info
+        int * buf = malloc(BLOCK_SIZE);
+        if (block_read(inode->block1, buf) != BLOCK_SIZE) {
+            free(buf);
+            return -1;
+        }
+
+        // Find the right block, allocate and updated disk
+        // if neccesary
+        int localIndex = blockIndex - startIndex1;
+        if (!buf[localIndex]) {
+            int temp = allocateBlock(fs);
+            if (!(temp > 0)) {
+                free(buf);
+                return -1;
+            }
+            buf[localIndex] = temp;
+            if (block_write(inode->block1, buf) != BLOCK_SIZE) {
+                free(buf);
+                return -1;
+            }
+        }
+        free(buf);
+        return buf[localIndex];
+
+    // If blockIndex is in the doubly indirect blocks then handle that
+    } else if (blockIndex >= startIndex2 && blockIndex <= endIndex2) {
+        
+        // Get the first block with the info
+        int * buf = malloc(BLOCK_SIZE);
+        if (block_read(inode->block2, buf) != BLOCK_SIZE) {
+            free(buf);
+            return -1;
+        }
+
+        // Calculating numbers
+        int localIndex = blockIndex - startIndex2;
+        int firstBlockIndex = localIndex / INTS_IN_BLOCK;
+        int secondBlockIndex = localIndex % INTS_IN_BLOCK;
+
+        // Allocate block for second block if not already
+        if (!buf[firstBlockIndex]) {
+            int temp = allocateBlock(fs);
+            if (!(temp > 0)) {
+                free(buf);
+                return -1;
+            }
+            buf[firstBlockIndex] = temp;
+            if (block_write(inode->block2, buf) != BLOCK_SIZE) {
+                free(buf);
+                return -1;
+            }
+        }
+
+        // Get second block
+        int secondBlock = buf[firstBlockIndex];
+        if (block_read(secondBlock, buf) != BLOCK_SIZE) {
+            free(buf);
+            return -1;
+        }
+
+        // Find the right block, allocate and updated disk
+        // if neccesary
+        if (!buf[secondBlockIndex]) {
+            int temp = allocateBlock(fs);
+            if (!(temp > 0)) {
+                free(buf);
+                return -1;
+            }
+            buf[secondBlockIndex] = temp;
+            if (block_write(secondBlock, buf) != BLOCK_SIZE) {
+                free(buf);
+                return -1;
+            }
+        }
+        free(buf);
+        return buf[secondBlockIndex];
+
+    } else {
+        return 0;
+    }
+}
+
+int readInodeData(struct inode * inode, size_t size, off_t offset, void * buf) {
+
+    size_t endRequest = size + offset;
+    if (endRequest > inode->indoe.st_size) {
+        return -1;
+    }
+    int blockIndex = offset / BLOCK_SIZE;
+    int byteInBlock = offset % BLOCK_SIZE;
+    int numBlocks = ((byteInBlock + size) / BLOCK_SIZE) + 1;
+
 }
 
 // Test function
