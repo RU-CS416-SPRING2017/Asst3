@@ -53,6 +53,15 @@ struct filesystem {
 // come indirectly from /usr/include/fuse.h
 //
 
+// Test function
+void printBits(char byte) {
+    int i;
+    for (i = 0; i < 8; i++) {
+        log_msg("%d", (byte >> (7 - i)) & 1);
+    }
+    log_msg("\n");
+}
+
 // Save all Inodes into buf,
 // return 0 if successful, -1 otherwise
 int getInodes(struct stat * buf) {
@@ -164,7 +173,7 @@ int freeBlock(struct filesystem * fs, int dataBlock) {
 
     // Getting the appropriate bitmap block
     char * bitmapBlockBuf = malloc(BLOCK_SIZE);
-    if (block_read(bitmapBlockIndex, bitmapBlockBuf) != BLOCK_SIZE) {
+    if (block_read(bitmapBlock, bitmapBlockBuf) != BLOCK_SIZE) {
         free(bitmapBlockBuf);
         return -1;
     }
@@ -175,7 +184,7 @@ int freeBlock(struct filesystem * fs, int dataBlock) {
     bitmapBlockBuf[charBufIndex] = bitmapBlockBuf[charBufIndex] & mask;
 
     // Writing buffer to disk
-    if (block_write(bitmapBlockIndex, bitmapBlockBuf) != BLOCK_SIZE) {
+    if (block_write(bitmapBlock, bitmapBlockBuf) != BLOCK_SIZE) {
         free(bitmapBlockBuf);
         return -1;
     }
@@ -267,7 +276,8 @@ void *sfs_init(struct fuse_conn_info *conn)
         // log_msg("test %d: %d\n", i, test);
     }
 
-    freeBlock(fs, 800);
+    freeBlock(fs, 4141);
+    allocateBlock(fs);
     printBitmap();
 
     return SFS_DATA;
