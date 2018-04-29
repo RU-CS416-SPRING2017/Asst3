@@ -444,6 +444,9 @@ int writeInodeData(struct inode * inode, size_t size, off_t offset, void * buf, 
             return -1;
         }
     }
+    if (totalSize > inode->info.st_size) {
+        inode->info.st_size = totalSize;
+    }
     return 0;
 }
 
@@ -524,6 +527,20 @@ void *sfs_init(struct fuse_conn_info *conn)
     block_write(FS_BLOCK, buf);
 
     log_msg("Max Disk Size: %d\nNumber of Blocks: %d\nNumber of Inodes: %d\nSize of all Inodes: %d\nNumber of Inode Blocks: %d\nNumber of Bitmap Blocks: %d\nNumber of Data Blocks: %d\nBitmap Blocks: %d\nData Blocks: %d\n", MAX_DISK_SIZE, NUM_BLOCKS, NUM_INODES, INODES_SIZE, fs->numIndoesBlocks, fs->numBitmapBlocks, fs->numDataBlocks, fs->bitmapBlocks, fs->dataBlocks);
+
+    struct inode inode;
+    memset(&inode, 0, sizeof(struct inode));
+
+    writeInodeData(&inode, 10, 0, "hello man", fs);
+    char temp[10];
+    readInodeData(&inode, 10, 0, temp, fs);
+
+    for (i = 0; i < 13; i++) {
+        log_msg("inode-blk[%d]: %d\n", i, inode.block[i]);
+    }
+    
+
+    log_msg("message: %s\n", temp);
 
     free(buf);
     return SFS_DATA;
