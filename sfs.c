@@ -34,10 +34,12 @@
 #define MAX_DISK_SIZE (16 * 1000 * 1000)
 #define INDOE_SIZE sizeof(struct inode)
 #define INODES_SIZE (INDOE_SIZE * NUM_INODES)
+#define MAX_FILE_SIZE (MAX_FILE_BLOCKS * BLOCK_SIZE)
 
 #define NUM_BLOCKS (MAX_DISK_SIZE / BLOCK_SIZE)
 #define NUM_INODES 128
 #define INTS_IN_BLOCK (BLOCK_SIZE / sizeof(int))
+#define MAX_FILE_BLOCKS (13 + INTS_IN_BLOCK + (INTS_IN_BLOCK * INTS_IN_BLOCK))
 
 #define INDOES_BLOCKS 1
 #define FS_BLOCK 0
@@ -416,6 +418,33 @@ int readInodeData(struct inode * inode, size_t size, off_t offset, void * buf, s
     free(dataBlock);
     return 0;
 
+}
+
+// Write size bytes from buf into inode's data starting at offset.
+// Return 0 on success and 
+int writeInodeData(struct inode * inode, size_t size, off_t offset, void * buf, struct filesystem * fs) {
+
+    // Calculate numbers
+    size_t totalSize = size + offset;
+    if (totalSize > MAX_FILE_SIZE) {
+        return -1;
+    }
+    int blockIndex = offset / BLOCK_SIZE;
+    int byteInBlock = offset % BLOCK_SIZE;
+    int numBlocks = ((byteInBlock + size) / BLOCK_SIZE) + 1;
+
+    // Write data to disk
+    int i;
+    for (i = 0; i < numBlocks; i++) {
+        int block = getInodeBlock(inode, blockIndex + i, fs);
+        if (!(block > 0)) {
+            return -1;
+        }
+        if (block_write(block, buf + (i + BLOCK_SIZE)) != BLOCK_SIZE) {
+            return -1;
+        }
+    }
+    return 0;
 }
 
 // Test function
