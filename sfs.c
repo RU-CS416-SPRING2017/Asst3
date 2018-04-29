@@ -32,8 +32,8 @@
 #define DISKFILE (((struct sfs_state *) fuse_get_context()->private_data)->diskfile)
 
 #define MAX_DISK_SIZE (16 * 1000 * 1000)
-#define INDOE_SIZE sizeof(struct inode)
-#define INODES_SIZE (INDOE_SIZE * NUM_INODES)
+#define INODE_SIZE sizeof(struct inode)
+#define INODES_SIZE (INODE_SIZE * NUM_INODES)
 #define MAX_FILE_SIZE (MAX_FILE_BLOCKS * BLOCK_SIZE)
 
 #define NUM_BLOCKS (MAX_DISK_SIZE / BLOCK_SIZE)
@@ -86,11 +86,11 @@ void printBits(char byte) {
 int getInode(int index, struct inode * buf) {
 
     // Calculating numbers
-    int firstByte = index * INDOE_SIZE;
+    int firstByte = index * INODE_SIZE;
     int blockIndex = firstByte / BLOCK_SIZE;
     int blockNumber = blockIndex + INDOES_BLOCKS;
     int byteInBlock = firstByte % BLOCK_SIZE;
-    int numBlocks = ((byteInBlock + INDOE_SIZE) / BLOCK_SIZE) + 1;
+    int numBlocks = ((byteInBlock + INODE_SIZE) / BLOCK_SIZE) + 1;
 
     // Get appropriate blocks
     char * block = malloc(BLOCK_SIZE * numBlocks);
@@ -103,7 +103,7 @@ int getInode(int index, struct inode * buf) {
     }
 
     // Store the inode in buf
-    memcpy(buf, block + byteInBlock, INDOE_SIZE);
+    memcpy(buf, block + byteInBlock, INODE_SIZE);
     free(block);
     return 0;
 }
@@ -113,11 +113,11 @@ int getInode(int index, struct inode * buf) {
 int setInode(int index, struct inode * buf) {
 
     // Calculating numbers
-    int firstByte = index * INDOE_SIZE;
+    int firstByte = index * INODE_SIZE;
     int blockIndex = firstByte / BLOCK_SIZE;
     int blockNumber = blockIndex + INDOES_BLOCKS;
     int byteInBlock = firstByte % BLOCK_SIZE;
-    int numBlocks = ((byteInBlock + INDOE_SIZE) / BLOCK_SIZE) + 1;
+    int numBlocks = ((byteInBlock + INODE_SIZE) / BLOCK_SIZE) + 1;
 
     // Get appropriate blocks
     char * block = malloc(BLOCK_SIZE * numBlocks);
@@ -130,7 +130,7 @@ int setInode(int index, struct inode * buf) {
     }
 
     // Store the buf in block
-    memcpy(block + byteInBlock, buf, INDOE_SIZE);
+    memcpy(block + byteInBlock, buf, INODE_SIZE);
 
     // Write back to disk
     for (i = 0; i < numBlocks; i++) {
@@ -558,37 +558,23 @@ void *sfs_init(struct fuse_conn_info *conn)
     // Write calculated numbers to fisrt block
     block_write(FS_BLOCK, buf);
 
-    log_msg("Max Disk Size: %d\nNumber of Blocks: %d\nNumber of Inodes: %d\nSize of all Inodes: %d\nNumber of Inode Blocks: %d\nNumber of Bitmap Blocks: %d\nNumber of Data Blocks: %d\nBitmap Blocks: %d\nData Blocks: %d\n", MAX_DISK_SIZE, NUM_BLOCKS, NUM_INODES, INODES_SIZE, fs->numIndoesBlocks, fs->numBitmapBlocks, fs->numDataBlocks, fs->bitmapBlocks, fs->dataBlocks);
+    log_msg("\ndisk size: %lu\n", MAX_DISK_SIZE);
+    log_msg("block size: %lu\n", BLOCK_SIZE);
+    log_msg("inodes size: %lu\n", INODES_SIZE);
+    log_msg("inode size: %lu\n", INODE_SIZE);
+    log_msg("bitmap size: %lu\n", fs->dataBlocks * BLOCK_SIZE);
+    log_msg("max file size: %lu\n\n", MAX_FILE_SIZE);
 
-    struct inode inode;
-    memset(&inode, 0, sizeof(struct inode));
+    log_msg("number of disk blocks: %d\n", NUM_BLOCKS);
+    log_msg("number of inodes blocks: %d\n", fs->numIndoesBlocks);
+    log_msg("number of bitmap blocks: %d\n", fs->numBitmapBlocks);
+    log_msg("number of data blocks: %d\n", fs->numDataBlocks);
+    log_msg("max blocks per file: %d\n\n", MAX_FILE_BLOCKS);
 
-    for (i = 0; i < 13; i++) {
-        log_msg("inode-blk[%d]: %d\n", i, inode.block[i]);
-    }
-    log_msg("inode-blk1: %d\n", inode.block1);
-    log_msg("inode-blk2: %d\n", inode.block2);
-
-    int rounds = 800000;
-
-    for (i = 0; i < rounds; i++) {
-        int write = writeInodeData(&inode, 10, 10 * i, "hello man ", fs);
-    }
-    char some = 0;
-    writeInodeData(&inode, 1, 10 * i, &some, fs);
-    
-    char * temp = malloc(rounds * 10 + 1);
-    int read = readInodeData(&inode, rounds * 10 + 1, 0, temp, fs);
-    log_msg("%s\n", temp);
-    free(temp);
-
-    for (i = 0; i < 13; i++) {
-        log_msg("inode-blk[%d]: %d\n", i, inode.block[i]);
-    }
-    log_msg("inode-blk1: %d\n", inode.block1);
-    log_msg("inode-blk2: %d\n", inode.block2);
-
-    printBitmap();
+    log_msg("metadata block number: %d\n", FS_BLOCK);
+    log_msg("inodes start at block: %d\n", INDOES_BLOCKS);
+    log_msg("bitmap starts at block: %d\n", fs->bitmapBlocks);
+    log_msg("data blocks start at block: %d\n\n", fs->dataBlocks);
 
     free(buf);
     return SFS_DATA;
