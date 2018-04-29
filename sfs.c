@@ -454,7 +454,7 @@ int writeInodeData(struct inode * inode, size_t size, off_t offset, void * buf, 
 
     // Update data on disk
     for (i = 0; i < numBlocks; i++) {
-        if (block_write(blocks[i], dataBlock + (i + BLOCK_SIZE)) != BLOCK_SIZE) {
+        if (block_write(blocks[i], dataBlock + (i * BLOCK_SIZE)) != BLOCK_SIZE) {
             return -1;
         }
     }
@@ -555,12 +555,7 @@ void *sfs_init(struct fuse_conn_info *conn)
         log_msg("inode-blk[%d]: %d\n", i, inode.block[i]);
     }
 
-
     log_msg("message: %s\n", temp);
-
-    char temp2[BLOCK_SIZE];
-    block_write(61, temp2);
-    log_msg("message2: %s\n", temp2);
 
     free(buf);
     return SFS_DATA;
