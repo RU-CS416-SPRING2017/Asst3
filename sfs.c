@@ -302,6 +302,15 @@ int getInodeBlock(struct inode * inode, int blockIndex, struct filesystem * fs) 
     // If blockIndex is in the singly indirect blocks then handle that
     } else if (blockIndex >= startIndex1 && blockIndex <= endIndex1) {
 
+        // Allocate a block for block1 if not already
+        if (!(inode->block1)) {
+            int temp = allocateBlock(fs);
+            if (!(temp > 0)) {
+                return -1;
+            }
+            inode->block1 = temp;
+        }
+
         // Get the block with the info
         int * buf = malloc(BLOCK_SIZE);
         if (block_read(inode->block1, buf) != BLOCK_SIZE) {
@@ -329,6 +338,15 @@ int getInodeBlock(struct inode * inode, int blockIndex, struct filesystem * fs) 
 
     // If blockIndex is in the doubly indirect blocks then handle that
     } else if (blockIndex >= startIndex2 && blockIndex <= endIndex2) {
+
+        // Allocate a block for block2 if not already
+        if (!(inode->block2)) {
+            int temp = allocateBlock(fs);
+            if (!(temp > 0)) {
+                return -1;
+            }
+            inode->block2 = temp;
+        }
         
         // Get the first block with the info
         int * buf = malloc(BLOCK_SIZE);
@@ -545,17 +563,32 @@ void *sfs_init(struct fuse_conn_info *conn)
     struct inode inode;
     memset(&inode, 0, sizeof(struct inode));
 
-    int write = writeInodeData(&inode, 10, 0, "hello man", fs);
-    char temp[10];
-    int read = readInodeData(&inode, 10, 0, temp, fs);
+    for (i = 0; i < 13; i++) {
+        log_msg("inode-blk[%d]: %d\n", i, inode.block[i]);
+    }
+    log_msg("inode-blk1: %d\n", inode.block1);
+    log_msg("inode-blk2: %d\n", inode.block2);
 
-    log_msg("write out: %d, read out: %d\n", write, read);
+    int rounds = 800000;
+
+    for (i = 0; i < rounds; i++) {
+        int write = writeInodeData(&inode, 10, 10 * i, "hello man ", fs);
+    }
+    char some = 0;
+    writeInodeData(&inode, 1, 10 * i, &some, fs);
+    
+    char * temp = malloc(rounds * 10 + 1);
+    int read = readInodeData(&inode, rounds * 10 + 1, 0, temp, fs);
+    log_msg("%s\n", temp);
+    free(temp);
 
     for (i = 0; i < 13; i++) {
         log_msg("inode-blk[%d]: %d\n", i, inode.block[i]);
     }
+    log_msg("inode-blk1: %d\n", inode.block1);
+    log_msg("inode-blk2: %d\n", inode.block2);
 
-    log_msg("message: %s\n", temp);
+    printBitmap();
 
     free(buf);
     return SFS_DATA;
