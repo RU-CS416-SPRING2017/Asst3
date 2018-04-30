@@ -703,7 +703,7 @@ int getInodeIndexFromDir(struct inode * dir, char * childName) {
     // Search for childName
     int i;
     for (i = 0; i < numRows; i++) {
-        if (strcmp(rows[i].name, childName)) {
+        if (!strcmp(rows[i].name, childName)) {
             free(rows);
             return rows[i].inodeIndex;
         }
@@ -721,7 +721,7 @@ int getInodeFromPath(const char * path) {
         return 0;
 
     // If not root
-    } else {
+    } else { 
 
         // Get root inode
         struct inode inode;
@@ -938,20 +938,20 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 	  path, fi);
 
     int inodeIndex = getInodeFromPath(path);
-    if (inodeIndex == -1) { log_msg("here1\n");
+    if (inodeIndex == -1) {
         return ENOENT;
     }
     log_msg("index %d\n", inodeIndex);
 
     struct inode inode;
-    if (getInode(inodeIndex, &inode)) {log_msg("here2\n");
+    if (getInode(inodeIndex, &inode)) {
         return ENOMEM;
     }
 
-    if (!(inode.info.st_mode & S_IFDIR)) {log_msg("here\n");
+    if (!(inode.info.st_mode & S_IFDIR)) {
         return ENOTDIR;
     }
-    log_msg("here3\n");
+
     return retstat;
 }
 
