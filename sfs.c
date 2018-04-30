@@ -148,13 +148,12 @@ int setInode(int index, struct inode * buf) {
 
 // Save all Inodes into buf,
 // return 0 if successful, -1 otherwise
-int getInodes(struct inode * buf) {
+int getInodes(struct inode * buf, struct filesystem * fs) {
     int i;
-    for (i = 0; i < NUM_INODES; i++) {
-        if (block_read(i + INDOES_BLOCKS, buf) != BLOCK_SIZE) {
+    for (i = 0; i < fs->numIndoesBlocks; i++) {
+        if (block_read(i + INDOES_BLOCKS, ((char *) buf) + (i * BLOCK_SIZE)) != BLOCK_SIZE) {
             return -1;
         }
-        buf += BLOCK_SIZE;
     }
     return 0;
 }
@@ -279,11 +278,11 @@ int freeBlock(struct filesystem * fs, int dataBlock) {
 
 // Returns the inode index for the next free inode.
 // Returns -1 on error.
-int allocateInode() {
+int allocateInode(struct filesystem * fs) {
 
     // Get all inodes
-    struct inode * inodes = malloc(INODES_SIZE);
-    if (getInodes(inodes)) {
+    struct inode * inodes = malloc(BLOCK_SIZE * fs->numIndoesBlocks);
+    if (getInodes(inodes, fs)) {
         free(inodes);
         return -1;
     }
@@ -307,7 +306,7 @@ int addFileToInode(struct inode * dir, char * filename, mode_t mode, struct file
     int numRows;
     readInodeData(dir, INT_SIZE, 0, &numRows, fs);
     struct dirRow row;
-    row.inodeIndex = allocateInode();
+    row.inodeIndex = allocateInode(fs);
     strcpy(row.name, filename);
     writeInodeData(dir, DIR_ROW_SIZE, INT_SIZE + (DIR_ROW_SIZE * numRows), &row, fs);
 
