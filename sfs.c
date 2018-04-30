@@ -301,15 +301,26 @@ int allocateInode(struct filesystem * fs) {
     return -1;
 }
 
+// Add filename to dir with mode. Return 0 on success and -1 otherwise.
 int addFileToInode(struct inode * dir, char * filename, mode_t mode, struct filesystem * fs) {
 
+    // Add the directory entry
     int numRows;
-    readInodeData(dir, INT_SIZE, 0, &numRows, fs);
+    if (readInodeData(dir, INT_SIZE, 0, &numRows, fs)) {
+        return -1;
+    }
     struct dirRow row;
     row.inodeIndex = allocateInode(fs);
     strcpy(row.name, filename);
-    writeInodeData(dir, DIR_ROW_SIZE, INT_SIZE + (DIR_ROW_SIZE * numRows), &row, fs);
+    if (writeInodeData(dir, DIR_ROW_SIZE, INT_SIZE + (DIR_ROW_SIZE * numRows), &row, fs)) {
+        return -1;
+    }
+    numRows++;
+    if (writeInodeData(dir, INT_SIZE, 0, &numRows, fs)) {
+        return -1;
+    }
 
+    // Add the inode
     struct inode inode;
     inode.info.st_nlink = 1;
     inode.info.st_mode = mode;
@@ -317,13 +328,16 @@ int addFileToInode(struct inode * dir, char * filename, mode_t mode, struct file
     inode.info.st_atime = time(NULL);
     inode.info.st_mtime = time(NULL);
     inode.info.st_ctime = time(NULL);
-    setInode(row.inodeIndex, &inode);
-
-
+    if (setInode(row.inodeIndex, &inode)) {
+        return -1;
+    }
+    return 0;
 }
 
+// Add the path as mode. Return 0 on success and -1 otherwise.
 int addFilePath(const char * path, mode_t mode, struct filesystem * fs) {
 
+    // Find the parent inode index
     char fpath[PATH_MAX];
     strcpy(fpath, path);
     int inodeIndex = 0;
@@ -332,12 +346,24 @@ int addFilePath(const char * path, mode_t mode, struct filesystem * fs) {
     filename++;
     if (*fpath) {
         inodeIndex = getInodeFromPath(fpath);
+        if (inodeIndex == -1) {
+            return -1;
+        }
     }
 
+    // Add the file to parent
     struct inode inode;
-    getInode(inodeIndex, &inode);
-    addFileToInode(&inode, filename, mode, fs);
+    if (getInode(inodeIndex, &inode)) {
+        return -1;
+    }
+    if (addFileToInode(&inode, filename, mode, fs)) {
+        return -1;
+    }
+    if (setInode(inodeIndex, &inode)) {
+        return -1;
+    }
 
+    return 0;
 }
 
 // Frees the inodes at index.
@@ -521,7 +547,7 @@ int readInodeData(struct inode * inode, size_t size, off_t offset, void * buf, s
 }
 
 // Write size bytes from buf into inode's data starting at offset.
-// Return 0 on success and 
+// Return 0 on success and -1 on error.
 int writeInodeData(struct inode * inode, size_t size, off_t offset, void * buf, struct filesystem * fs) {
 
     // Calculate numbers
@@ -734,11 +760,17 @@ int getInodeIndexFromDir(struct inode * dir, char * childName) {
 
     // Get data from disk
     struct filesystem fs;
-    getFilesystem(&fs);
+    if (getFilesystem(&fs)) {
+        return -1;
+    }
     int numRows;
-    readInodeData(dir, INT_SIZE, 0, &numRows, &fs);
+    if (readInodeData(dir, INT_SIZE, 0, &numRows, &fs)) {
+        return -1;
+    }
     struct dirRow * rows = malloc(DIR_ROW_SIZE * numRows);
-    readInodeData(dir, DIR_ROW_SIZE * numRows, INT_SIZE, rows, &fs);
+    if (readInodeData(dir, DIR_ROW_SIZE * numRows, INT_SIZE, rows, &fs)) {
+        return -1;
+    }
 
     // Search for childName
     int i;
