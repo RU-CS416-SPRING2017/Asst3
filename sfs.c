@@ -548,7 +548,7 @@ int readInodeData(struct inode * inode, size_t size, off_t offset, void * buf, s
 
 // Write size bytes from buf into inode's data starting at offset.
 // Return 0 on success and -1 on error.
-int writeInodeData(struct inode * inode, size_t size, off_t offset, void * buf, struct filesystem * fs) {
+int writeInodeData(struct inode * inode, size_t size, off_t offset, const void * buf, struct filesystem * fs) {
 
     // Calculate numbers
     size_t totalSize = size + offset;
@@ -906,6 +906,7 @@ int sfs_open(const char *path, struct fuse_file_info *fi)
     log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
 
+    // fi->flags = O_CREAT|O_EXCL|O_TRUNC;
     
     return retstat;
 }
@@ -951,8 +952,35 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     log_msg("\nsfs_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
 
-   
-    return retstat;
+    int inodeIndex = getInodeFromPath(path);
+    if (inodeIndex == -1) {
+        return -ENOENT;
+    }
+
+    struct inode inode;
+    if (getInode(inodeIndex, &inode)) {
+        return -ENOENT;
+    }
+
+    struct filesystem fs;
+    if (getFilesystem(&fs)) {
+        return -ENOENT;
+    }
+
+    size_t totalSize = size + offset;
+    if (totalSize > inode.info.st_size) {
+        size_t fileSize = inode.info.st_size - offset;
+        if (readInodeData(&inode, fileSize, offset, buf, &fs)) {
+            return -ENOENT;
+        }
+        memset(buf + fileSize, 0, size - fileSize);
+    } else {
+        if (readInodeData(&inode, size, offset, buf, &fs)) {
+            return -ENOENT;
+        }
+    }
+
+    return size;
 }
 
 /** Write data to an open file
@@ -970,8 +998,30 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     log_msg("\nsfs_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
     
+    int inodeIndex = getInodeFromPath(path);
+    if (inodeIndex == -1) {
+        return -ENOENT;
+    }
+
+    struct inode inode;
+    if (getInode(inodeIndex, &inode)) {
+        return -ENOENT;
+    }
+
+    struct filesystem fs;
+    if (getFilesystem(&fs)) {
+        return -ENOENT;
+    }
+
+    if (writeInodeData(&inode, size, offset, buf, &fs)) {
+        return -ENOENT;
+    }
+
+    if (setInode(inodeIndex, &inode)) {
+        return -ENOENT;
+    }
     
-    return retstat;
+    return size;
 }
 
 
@@ -1016,7 +1066,6 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
     if (inodeIndex == -1) {
         return ENOENT;
     }
-    log_msg("index %d\n", inodeIndex);
 
     struct inode inode;
     if (getInode(inodeIndex, &inode)) {
