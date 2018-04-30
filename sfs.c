@@ -773,8 +773,7 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 
     int inodeIndex = getInodeFromPath(path);
     if (inodeIndex == -1) {
-        errno = ENOENT;
-        return -1;
+        return -ENOENT;
     }
     struct inode inode;
     getInode(inodeIndex, &inode);
