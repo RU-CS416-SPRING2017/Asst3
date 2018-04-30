@@ -35,10 +35,12 @@
 #define INODE_SIZE sizeof(struct inode)
 #define INODES_SIZE (INODE_SIZE * NUM_INODES)
 #define MAX_FILE_SIZE (MAX_FILE_BLOCKS * BLOCK_SIZE)
+#define INT_SIZE sizeof(int)
+#define DIR_ROW_SIZE sizeof(struct dirRow)
 
 #define NUM_BLOCKS (MAX_DISK_SIZE / BLOCK_SIZE)
 #define NUM_INODES 128
-#define INTS_IN_BLOCK (BLOCK_SIZE / sizeof(int))
+#define INTS_IN_BLOCK (BLOCK_SIZE / INT_SIZE)
 #define MAX_FILE_BLOCKS (13 + INTS_IN_BLOCK + (INTS_IN_BLOCK * INTS_IN_BLOCK))
 
 #define INDOES_BLOCKS 1
@@ -47,6 +49,7 @@
 #define FS_CAST(ptr) ((struct filesystem *) (ptr))
 
 struct filesystem {
+    int rootInodeIndex;
     int numIndoesBlocks;
     int bitmapBlocks;
     int numBitmapBlocks;
@@ -62,8 +65,8 @@ struct inode {
 };
 
 struct dirRow {
-    char name[NAME_MAX];
-    int inode;
+    char name[255];
+    int inodeIndex;
 };
 
 ///////////////////////////////////////////////////////////
@@ -274,6 +277,42 @@ int freeBlock(struct filesystem * fs, int dataBlock) {
     return 0;
 }
 
+// Returns the inode index for the next free inode.
+// Returns -1 on error.
+int allocateInode() {
+
+    // Get all inodes
+    struct inode * inodes = malloc(INODES_SIZE);
+    if (getInodes(inodes)) {
+        free(inodes);
+        return -1;
+    }
+
+    // Find the first free one and return it
+    int i;
+    for (i = 0; i < NUM_INODES; i++) {
+        if(!inodes[i].info.st_nlink) {
+            return i;
+        }
+    }
+
+    // No free inodes were found
+    return -1;
+}
+
+// Frees the inodes at index.
+// Returns 0 on success and -1
+// on failure.
+// int freeInode(int index) {
+
+//     struct inode inode;
+//     if (getInode(index, &inode)) {
+//         return -1;
+//     }
+
+
+// }
+
 // Returns the data block number of inode at blockIndex.
 // Returns 0 if out of index. Returns -1 on error.
 // Allocates the block if not allocated.
@@ -296,6 +335,7 @@ int getInodeBlock(struct inode * inode, int blockIndex, struct filesystem * fs) 
                 return -1;
             }
             inode->block[blockIndex] = temp;
+            (inode->info.st_blocks)++;
         }
         return inode->block[blockIndex];
 
@@ -332,6 +372,7 @@ int getInodeBlock(struct inode * inode, int blockIndex, struct filesystem * fs) 
                 free(buf);
                 return -1;
             }
+            (inode->info.st_blocks)++;
         }
         free(buf);
         return buf[localIndex];
@@ -394,6 +435,7 @@ int getInodeBlock(struct inode * inode, int blockIndex, struct filesystem * fs) 
                 free(buf);
                 return -1;
             }
+            (inode->info.st_blocks)++;
         }
         free(buf);
         return buf[secondBlockIndex];
@@ -512,6 +554,48 @@ void printBitmap() {
     }
 }
 
+// Test function
+void writeBytesToInode(struct inode * inode, size_t num, void * buf, size_t bufSize, struct filesystem * fs) {
+
+    int rounds = (num / bufSize);
+    if (num % bufSize) {
+        rounds++;
+    }
+
+    int i;
+    for (i = 0; i < rounds; i++) {
+        int write = writeInodeData(inode, bufSize, i * bufSize, buf, fs);
+    }
+}
+
+// Initializes a directory return 0 on succes and -1 on failure
+int initializeDirectory(struct inode * inode, int index, int parent, struct filesystem * fs) {
+
+    inode->info.st_mode = S_IFDIR;
+    inode->info.st_ino = index;
+    inode->info.st_blksize = BLOCK_SIZE;
+    (inode->info.st_nlink)++;
+    inode->info.st_atime = time(NULL);
+    inode->info.st_mtime = time(NULL);
+    inode->info.st_ctime = time(NULL);
+
+    int numRows = 2;
+    struct dirRow init[2];
+    strcpy(init[0].name, ".");
+    init[0].inodeIndex = index;
+    strcpy(init[1].name, "..");
+    init[1].inodeIndex = parent;
+    char buf[INT_SIZE + (DIR_ROW_SIZE * 2)];
+    memcpy(buf, &numRows, INT_SIZE);
+    memcpy(buf + INT_SIZE, init, DIR_ROW_SIZE * 2);
+
+    if (writeInodeData(inode, INT_SIZE + (DIR_ROW_SIZE * 2), 0, buf, fs) != BLOCK_SIZE) {
+        return -1;
+    }
+
+    return 0;
+}
+
 /**
  * Initialize filesystem
  *
@@ -554,27 +638,33 @@ void *sfs_init(struct fuse_conn_info *conn)
         (fs->numDataBlocks)--;
     }
     fs->dataBlocks = fs->bitmapBlocks + fs->numBitmapBlocks;
+    fs->rootInodeIndex = 0;
     
     // Write calculated numbers to fisrt block
     block_write(FS_BLOCK, buf);
 
+    // Log the numbers
     log_msg("\ndisk size: %lu\n", MAX_DISK_SIZE);
     log_msg("block size: %lu\n", BLOCK_SIZE);
     log_msg("inodes size: %lu\n", INODES_SIZE);
     log_msg("inode size: %lu\n", INODE_SIZE);
     log_msg("bitmap size: %lu\n", fs->dataBlocks * BLOCK_SIZE);
     log_msg("max file size: %lu\n\n", MAX_FILE_SIZE);
-
     log_msg("number of disk blocks: %d\n", NUM_BLOCKS);
     log_msg("number of inodes blocks: %d\n", fs->numIndoesBlocks);
     log_msg("number of bitmap blocks: %d\n", fs->numBitmapBlocks);
     log_msg("number of data blocks: %d\n", fs->numDataBlocks);
     log_msg("max blocks per file: %d\n\n", MAX_FILE_BLOCKS);
-
     log_msg("metadata block number: %d\n", FS_BLOCK);
     log_msg("inodes start at block: %d\n", INDOES_BLOCKS);
     log_msg("bitmap starts at block: %d\n", fs->bitmapBlocks);
     log_msg("data blocks start at block: %d\n\n", fs->dataBlocks);
+
+    // Initialize root inode
+    struct inode inode;
+    memset(&inode, 0, sizeof(struct inode));
+    initializeDirectory(&inode, 0, 0, fs);
+    setInode(0, &inode);
 
     free(buf);
     return SFS_DATA;
@@ -606,6 +696,12 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     
     log_msg("\nsfs_getattr(path=\"%s\", statbuf=0x%08x)\n",
 	  path, statbuf);
+
+    if (!strcmp(path, "/")) {
+        struct inode inode;
+        getInode(0, &inode);
+        memcpy(statbuf, &(inode.info), sizeof(struct stat));
+    }
     
     return retstat;
 }
@@ -764,7 +860,6 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
     log_msg("\nsfs_opendir(path=\"%s\", fi=0x%08x)\n",
 	  path, fi);
     
-    
     return retstat;
 }
 
@@ -793,6 +888,26 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	       struct fuse_file_info *fi)
 {
     int retstat = 0;
+
+    struct filesystem fs;
+    getFilesystem(&fs);
+    struct inode inode;
+
+    if (!strcmp(path, "/")) {
+        getInode(0, &inode);
+    }
+
+    int numFiles;
+    readInodeData(&inode, INT_SIZE, 0, &numFiles, &fs);
+    struct dirRow * rows = malloc(DIR_ROW_SIZE * numFiles);
+    readInodeData(&inode, DIR_ROW_SIZE * numFiles, INT_SIZE, rows, &fs);
+    int i;
+    for (i = 0; i < numFiles; i++) {
+        struct inode temp;
+        getInode(rows[i].inodeIndex, &temp);
+        filler(buf, rows[i].name, &(temp.info), 0);
+    }
+    free(rows);
     
     
     return retstat;
