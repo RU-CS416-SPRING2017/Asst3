@@ -292,11 +292,13 @@ int allocateInode() {
     int i;
     for (i = 0; i < NUM_INODES; i++) {
         if(!inodes[i].info.st_nlink) {
+            free(inodes);
             return i;
         }
     }
 
     // No free inodes were found
+    free(inodes);
     return -1;
 }
 
