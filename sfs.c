@@ -683,6 +683,80 @@ void sfs_destroy(void *userdata)
     disk_close();
 }
 
+// Return the index of the inode refrenced by the child of dir with
+// the name childName. Return -1 on error
+int getInodeIndexFromDir(struct inode * dir, char * childName) {
+
+    // Check if directory
+    if (!(dir->info.st_mode & S_IFDIR)) {
+        return -1;
+    }
+
+    // Get data from disk
+    struct filesystem fs;
+    getFilesystem(&fs);
+    int numRows;
+    readInodeData(dir, INT_SIZE, 0, &numRows, &fs);
+    struct dirRow * rows = malloc(DIR_ROW_SIZE * numRows);
+    readInodeData(dir, DIR_ROW_SIZE * numRows, INT_SIZE, rows, &fs);
+
+    // Search for childName
+    int i;
+    for (i = 0; i < numRows; i++) {
+        if (strcmp(rows[i].name, childName)) {
+            free(rows);
+            return rows[i].inodeIndex;
+        }
+    }
+
+    free(rows);
+    return -1;
+}
+
+// Return the inode index refrenced by path. Return -1 on error.
+int getInodeFromPath(const char * path) {
+
+    // Return root inode if root
+    if (!strcmp(path, "/")) {
+        return 0;
+
+    // If not root
+    } else {
+
+        // Get root inode
+        struct inode inode;
+        if (getInode(0, &inode)) {
+            return -1;
+        }
+
+        // Loop through path tokens
+        char fpath[PATH_MAX];
+        strcpy(fpath, path);
+        char * next = strtok(fpath, "/");
+        while (next) {
+
+            char * current = next;
+            next = strtok(NULL, "/");
+            
+            // Find child
+            int childInode = getInodeIndexFromDir(&inode, current);
+            if (childInode == -1) {
+                return -1;
+            }
+            if (!next) {
+                return childInode;
+            }
+
+            // Store the inode of the child to continue the
+            // search.
+            if (getInode(childInode, &inode)) {
+                return -1;
+            }
+        }
+
+    }
+}
+
 /** Get file attributes.
  *
  * Similar to stat().  The 'st_dev' and 'st_blksize' fields are
@@ -697,12 +771,15 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     log_msg("\nsfs_getattr(path=\"%s\", statbuf=0x%08x)\n",
 	  path, statbuf);
 
-    if (!strcmp(path, "/")) {
-        struct inode inode;
-        getInode(0, &inode);
-        memcpy(statbuf, &(inode.info), sizeof(struct stat));
+    int inodeIndex = getInodeFromPath(path);
+    if (inodeIndex == -1) {
+        errno = ENOENT;
+        return -1;
     }
-    
+    struct inode inode;
+    getInode(inodeIndex, &inode);
+    memcpy(statbuf, &(inode.info), sizeof(struct stat));
+
     return retstat;
 }
 
@@ -859,7 +936,22 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
     int retstat = 0;
     log_msg("\nsfs_opendir(path=\"%s\", fi=0x%08x)\n",
 	  path, fi);
-    
+
+    int inodeIndex = getInodeFromPath(path);
+    if (inodeIndex == -1) { log_msg("here1\n");
+        return ENOENT;
+    }
+    log_msg("index %d\n", inodeIndex);
+
+    struct inode inode;
+    if (getInode(inodeIndex, &inode)) {log_msg("here2\n");
+        return ENOMEM;
+    }
+
+    if (!(inode.info.st_mode & S_IFDIR)) {log_msg("here\n");
+        return ENOTDIR;
+    }
+    log_msg("here3\n");
     return retstat;
 }
 
