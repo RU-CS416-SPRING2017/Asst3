@@ -300,6 +300,45 @@ int allocateInode() {
     return -1;
 }
 
+int addFileToInode(struct inode * dir, char * filename, mode_t mode, struct filesystem * fs) {
+
+    int numRows;
+    readInodeData(dir, INT_SIZE, 0, &numRows, fs);
+    struct dirRow row;
+    row.inodeIndex = allocateInode();
+    strcpy(row.name, filename);
+    writeInodeData(dir, DIR_ROW_SIZE, INT_SIZE + (DIR_ROW_SIZE * numRows), &row, fs);
+
+    struct inode inode;
+    inode.info.st_nlink = 1;
+    inode.info.st_mode = mode;
+    inode.info.st_ino = row.inodeIndex;
+    inode.info.st_atime = time(NULL);
+    inode.info.st_mtime = time(NULL);
+    inode.info.st_ctime = time(NULL);
+    setInode(row.inodeIndex, &inode);
+
+
+}
+
+int addFilePath(const char * path, mode_t mode, struct filesystem * fs) {
+
+    char fpath[PATH_MAX];
+    strcpy(fpath, path);
+    int inodeIndex = 0;
+    char * filename = strrchr(fpath, '/');
+    *filename = 0;
+    filename++;
+    if (*fpath) {
+        inodeIndex = getInodeFromPath(fpath);
+    }
+
+    struct inode inode;
+    getInode(inodeIndex, &inode);
+    addFileToInode(&inode, filename, mode, fs);
+
+}
+
 // Frees the inodes at index.
 // Returns 0 on success and -1
 // on failure.
@@ -800,6 +839,10 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     log_msg("\nsfs_create(path=\"%s\", mode=0%03o, fi=0x%08x)\n",
 	    path, mode, fi);
     
+    struct filesystem fs;
+    getFilesystem(&fs);
+
+    addFilePath(path, mode, &fs);
     
     return retstat;
 }
