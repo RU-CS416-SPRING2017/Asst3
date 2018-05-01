@@ -324,6 +324,7 @@ int addFileToInode(struct inode * dir, char * filename, mode_t mode, struct file
     struct inode inode;
     inode.info.st_nlink = 1;
     inode.info.st_mode = mode;
+    inode.info.st_blksize = BLOCK_SIZE;
     inode.info.st_ino = row.inodeIndex;
     inode.info.st_atime = time(NULL);
     inode.info.st_mtime = time(NULL);
@@ -640,22 +641,14 @@ int initializeDirectory(struct inode * inode, int index, int parent, struct file
     inode->info.st_mode = S_IFDIR;
     inode->info.st_ino = index;
     inode->info.st_blksize = BLOCK_SIZE;
-    (inode->info.st_nlink)++;
+    inode->info.st_nlink = 1;
     inode->info.st_atime = time(NULL);
     inode->info.st_mtime = time(NULL);
     inode->info.st_ctime = time(NULL);
 
-    int numRows = 2;
-    struct dirRow init[2];
-    strcpy(init[0].name, ".");
-    init[0].inodeIndex = index;
-    strcpy(init[1].name, "..");
-    init[1].inodeIndex = parent;
-    char buf[INT_SIZE + (DIR_ROW_SIZE * 2)];
-    memcpy(buf, &numRows, INT_SIZE);
-    memcpy(buf + INT_SIZE, init, DIR_ROW_SIZE * 2);
+    int numRows = 0;
 
-    if (writeInodeData(inode, INT_SIZE + (DIR_ROW_SIZE * 2), 0, buf, fs) != BLOCK_SIZE) {
+    if (writeInodeData(inode, INT_SIZE, 0, &numRows, fs) != BLOCK_SIZE) {
         return -1;
     }
 
@@ -1108,15 +1101,26 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     struct filesystem fs;
     getFilesystem(&fs);
     struct inode inode;
-
-    if (!strcmp(path, "/")) {
-        getInode(0, &inode);
+    int inodeIndex = getInodeFromPath(path);
+    if (inodeIndex == -1) {
+        return -ENOENT;
+    }
+    if (getInode(inodeIndex, &inode)) {
+        return -ENOENT;
     }
 
+    filler(buf, ".", NULL, 0);
+    filler(buf, "..", NULL, 0);
+
     int numFiles;
-    readInodeData(&inode, INT_SIZE, 0, &numFiles, &fs);
+    if (readInodeData(&inode, INT_SIZE, 0, &numFiles, &fs)) {
+        return -ENOENT;
+    }
     struct dirRow * rows = malloc(DIR_ROW_SIZE * numFiles);
-    readInodeData(&inode, DIR_ROW_SIZE * numFiles, INT_SIZE, rows, &fs);
+    if (readInodeData(&inode, DIR_ROW_SIZE * numFiles, INT_SIZE, rows, &fs)) {
+        free(rows);
+        return -ENOENT;
+    }
     int i;
     for (i = 0; i < numFiles; i++) {
         struct inode temp;
@@ -1124,7 +1128,6 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
         filler(buf, rows[i].name, &(temp.info), 0);
     }
     free(rows);
-    
     
     return retstat;
 }
