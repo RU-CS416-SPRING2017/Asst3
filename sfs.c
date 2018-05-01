@@ -329,6 +329,12 @@ int addFileToInode(struct inode * dir, char * filename, mode_t mode, struct file
     inode.info.st_atime = time(NULL);
     inode.info.st_mtime = time(NULL);
     inode.info.st_ctime = time(NULL);
+    if (mode & S_IFDIR) {
+        numRows = 0;
+        if (writeInodeData(&inode, INT_SIZE, 0, &numRows, fs)) {
+            return -1;
+        }
+    }
     if (setInode(row.inodeIndex, &inode)) {
         return -1;
     }
@@ -1024,6 +1030,15 @@ int sfs_mkdir(const char *path, mode_t mode)
     int retstat = 0;
     log_msg("\nsfs_mkdir(path=\"%s\", mode=0%3o)\n",
 	    path, mode);
+
+    struct filesystem  fs;
+    if (getFilesystem(&fs)) {
+        return -ENOENT;
+    }
+
+    if (addFilePath(path, mode | S_IFDIR, &fs)) {
+        return -ENOENT;
+    }
    
     
     return retstat;
