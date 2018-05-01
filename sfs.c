@@ -276,6 +276,170 @@ int freeBlock(struct filesystem * fs, int dataBlock) {
     return 0;
 }
 
+// Removes filename from dir. Returns 0 on success -1 otherwise.
+int removeDirRow(struct inode * dir, char * filename, struct filesystem * fs) {
+    int numRows;
+    if (readInodeData(dir, INT_SIZE, 0, &numRows, fs)) {
+        return -1;
+    }
+    struct dirRow * rows = malloc(numRows * DIR_ROW_SIZE);
+    if (readInodeData(dir, numRows * DIR_ROW_SIZE, INT_SIZE, rows, fs)) {
+        return -1;
+    }
+    int i;
+    int j = -1;
+    for (i = 0; i < numRows; i++) {
+        if (!strcmp(rows[i].name, filename)) {
+            j = i;
+        }
+    }
+
+    if (j > -1) {
+        int index = j + 1;
+        if (index < numRows) {
+            struct dirRow * temp = malloc(numRows * DIR_ROW_SIZE);
+            size_t size = (numRows - index) * DIR_ROW_SIZE;
+            memcpy(temp, rows + index, size);
+            memcpy(rows + j, temp, size);
+            if (writeInodeData(dir, DIR_ROW_SIZE * (numRows - 1), INT_SIZE, rows, fs)) {
+                return -1;
+            }
+        }
+        numRows--;
+        if (writeInodeData(dir, INT_SIZE, 0, &numRows, fs)) {
+            return -1;
+        }
+    } else {
+        return -1;
+    }
+}
+
+// Removes the file at path. Returns 0 on success and 
+// -1 on failure.
+int removeFile(const char * path, struct filesystem * fs) {
+
+    char fpath[PATH_MAX];
+    strcpy(fpath, path);
+    int inodeIndex = 0;
+    char * filename = strrchr(fpath, '/');
+    *filename = 0;
+    filename++;
+    if (*fpath) {
+        inodeIndex = getInodeFromPath(fpath);
+        if (inodeIndex == -1) {
+            return -1;
+        }
+    }
+
+    struct inode parent;
+    if (getInode(inodeIndex, &parent)) {
+        return -1;
+    }
+
+    struct inode inode;
+    inodeIndex = getInodeFromPath(path);
+    if (inodeIndex == -1) {
+        return -1;
+    }
+
+    char emptyBlock[BLOCK_SIZE] = { 0 };
+
+    int i;
+    for (i = 0; i < 13; i++) {
+        if (inode.block[i]) {
+            if (freeBlock(fs, inode.block[i])) {
+                return -1;
+            }
+            if (block_write(inode.block[i], emptyBlock) != BLOCK_SIZE) {
+                return -1;
+            }
+        }
+    }
+    if (inode.block1) {
+        int * temp = malloc(BLOCK_SIZE);
+        if (block_read(inode.block1, temp) != BLOCK_SIZE) {
+            free(temp);
+            return -1;
+        }
+        for (i = 0; i < INTS_IN_BLOCK; i++) {
+            if (temp[i]) {
+                if (freeBlock(fs, temp[i])) {
+                    free(temp);
+                    return -1;
+                }
+                if (block_write(temp[i], emptyBlock) != BLOCK_SIZE) {
+                    free(temp);
+                    return -1;
+                }
+            }
+        }
+        if (freeBlock(fs, inode.block1)) {
+            free(temp);
+            return -1;
+        }
+        if (block_write(inode.block1, emptyBlock) != BLOCK_SIZE) {
+            free(temp);
+            return -1;
+        }
+    }
+    if (inode.block2) {
+        int * temp = malloc(BLOCK_SIZE);
+        if (block_read(inode.block2, temp) != BLOCK_SIZE) {
+            free(temp);
+            return -1;
+        }
+        for (i = 0; i < INTS_IN_BLOCK; i++) {
+            int * temp2 = malloc(BLOCK_SIZE);
+            if (block_read(temp[i], temp) != BLOCK_SIZE) {
+                free(temp);
+                free(temp2);
+                return -1;
+            }
+            int j;
+            for (j = 0; i < INTS_IN_BLOCK; i++) {
+                if (temp2[j]) {
+                    if (freeBlock(fs, temp2[j])) {
+                        free(temp);
+                        free(temp2);
+                        return -1;
+                    }
+                    if (block_write(temp2[j], emptyBlock) != BLOCK_SIZE) {
+                        free(temp);
+                        free(temp2);
+                        return -1;
+                    }
+                }
+            }
+            if (freeBlock(fs, temp[i])) {
+                free(temp);
+                free(temp2);
+                return -1;
+            }
+            if (block_write(temp[i], emptyBlock) != BLOCK_SIZE) {
+                free(temp);
+                free(temp2);
+                return -1;
+            }
+        }
+        if (freeBlock(fs, inode.block2)) {
+            free(temp);
+            return -1;
+        }
+        if (block_write(inode.block2, emptyBlock) != BLOCK_SIZE) {
+            free(temp);
+            return -1;
+        }
+    }
+    if (removeDirRow(&parent, filename, fs)) {
+        return -1;
+    }
+    memset(&inode, 0, INODE_SIZE);
+    if (setInode(inodeIndex, &inode)) {
+        return -1;
+    }
+    return 0;
+}
+
 // Returns the inode index for the next free inode.
 // Returns -1 on error.
 int allocateInode(struct filesystem * fs) {
@@ -885,6 +1049,15 @@ int sfs_unlink(const char *path)
     int retstat = 0;
     log_msg("sfs_unlink(path=\"%s\")\n", path);
 
+    struct filesystem fs;
+    if (getFilesystem(&fs)) {
+        return -ENOENT;
+    }
+
+    if (removeFile(path, &fs)) {
+        return -ENOENT;
+    }
+
     
     return retstat;
 }
@@ -1051,6 +1224,16 @@ int sfs_rmdir(const char *path)
     int retstat = 0;
     log_msg("sfs_rmdir(path=\"%s\")\n",
 	    path);
+
+
+    struct filesystem fs;
+    if (getFilesystem(&fs)) {
+        return -ENOENT;
+    }
+
+    if (removeFile(path, &fs)) {
+        return -ENOENT;
+    }
     
     
     return retstat;
